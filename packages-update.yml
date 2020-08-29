@@ -1,0 +1,35 @@
+---
+- name: Check ansible version
+  import_playbook: ansible_version.yml
+
+- hosts: all
+  gather_facts: false
+  tasks:
+    - name: "Set up proxy environment"
+      set_fact:
+        proxy_env:
+          http_proxy: "{{ http_proxy | default ('') }}"
+          HTTP_PROXY: "{{ http_proxy | default ('') }}"
+          https_proxy: "{{ https_proxy | default ('') }}"
+          HTTPS_PROXY: "{{ https_proxy | default ('') }}"
+          no_proxy: "{{ no_proxy | default ('') }}"
+          NO_PROXY: "{{ no_proxy | default ('') }}"
+      no_log: true
+
+- hosts: kube-master
+  serial: 1
+  gather_facts: false
+  roles:
+    - { role: kubespray-defaults }
+    - { role: upgrade/pre-upgrade, tags: pre-upgrade }
+    - { role: update-packages }
+    - { role: upgrade/post-upgrade, tags: post-upgrade }
+
+- hosts: kube-node:!kube-master
+  gather_facts: false
+  serial: "{{ serial | default('50%') }}"
+  roles:
+    - { role: kubespray-defaults }
+    - { role: upgrade/pre-upgrade, tags: pre-upgrade }
+    - { role: update_packages }
+    - { role: upgrade/post-upgrade, tags: post-upgrade }

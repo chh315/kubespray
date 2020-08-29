@@ -1,0 +1,55 @@
+---
+# Disable Docker & Kubelet
+- name: disable service docker and ensure it is not masked
+  systemd:
+    name: docker
+    enabled: no
+    masked: no
+- name: disable service kubelet and ensure it is not masked
+  systemd:
+    name: kubelet
+    enabled: no
+    masked: no
+# Reboot Before Update
+- name: Reboot the machine before update
+  reboot:
+    pre_reboot_delay: 60
+    post_reboot_delay: 360
+  register: REBOOT_RESULT
+- debug: msg="{{ inventory_hostname}} {{REBOOT_RESULT}}"
+# List Available Patches
+- name: List Available Patches (Non-Docker)
+  yum:
+    list: updates
+    update_cache: true
+    exclude: docker-ce*
+  register: yumoutput
+- debug: msg="{{ inventory_hostname}} {{ yumoutput.results }}"
+# Update Packages
+- name: upgrade all packages, excluding docker packages
+  yum:
+    name: '*'
+    state: latest
+    exclude: docker-ce*
+# Remove Unused Kernel
+- name: Remove old kernels from the OS keeping only the last most recent three
+  command: /usr/bin/package-cleanup --oldkernels --count=3 -y
+
+# Enable Docker & Kubelet
+- name: enable service docker and ensure it is not masked
+  systemd:
+    name: docker
+    enabled: yes
+    masked: no
+- name: enable service kubelet and ensure it is not masked
+  systemd:
+    name: kubelet
+    enabled: yes
+    masked: no
+# Reboot Again
+- name: Reboot the machine after update
+  reboot:
+    pre_reboot_delay: 60
+    post_reboot_delay: 360
+  register: REBOOT_RESULT
+- debug: msg="{{ inventory_hostname}} {{REBOOT_RESULT}}"
