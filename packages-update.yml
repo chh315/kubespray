@@ -31,5 +31,5 @@
   roles:
     - { role: kubespray-defaults }
     - { role: upgrade/pre-upgrade, tags: pre-upgrade }
-    - { role: update_packages }
+    - { role: update-packages }
     - { role: upgrade/post-upgrade, tags: post-upgrade }
