@@ -17,7 +17,7 @@
       no_log: true
 
 - hosts: kube-master
-  serial: 1
+  serial: 2
   gather_facts: false
   roles:
     - { role: kubespray-defaults }
