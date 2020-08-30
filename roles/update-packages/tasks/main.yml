@@ -1,4 +1,9 @@
 ---
+- name: Gather host facts to get ansible_os_family
+  setup:
+    gather_subset: '!all'
+    filter: ansible_*
+
 # Disable Docker & Kubelet
 - name: disable service docker and ensure it is is stopped
   service:
@@ -17,7 +22,7 @@
     pre_reboot_delay: "{{ server_update_reboot_pre_reboot_delay }}"
     post_reboot_delay: "{{ server_update_reboot_post_reboot_delay }}"
     reboot_timeout: "{{ server_update_reboot_reboot_timeout }}"
-  when: reboot_default | bool and reboot_hint_result | bool
+  when: reboot_default | bool
 
 #Upgrade and reboot Redhat/CentOS based servers
 - block:
@@ -50,16 +55,21 @@
   command: /usr/bin/package-cleanup --oldkernels --count=3 -y
 
 # Reboot Again If Necessary
-- name: Check for reboot hint.
-  shell: LAST_KERNEL=$(rpm -q --last kernel | awk 'NR==1{sub(/kernel-/,""); print $1}'); CURRENT_KERNEL=$(uname -r); if [ $LAST_KERNEL != $CURRENT_KERNEL ]; then echo 'reboot'; else echo 'no'; fi
-  ignore_errors: true
-  register: reboot_hint
+- name: install yum-utils
+  package:
+    name: yum-utils
+
+- name: check if reboot is required
+  shell: needs-restarting -r
+  failed_when: false
+  register: reboot_required
+  changed_when: false
 - name: Reboot the machine after update if requried
   reboot:
     pre_reboot_delay: "{{ server_update_reboot_pre_reboot_delay }}"
     post_reboot_delay: "{{ server_update_reboot_post_reboot_delay }}"
     reboot_timeout: "{{ server_update_reboot_reboot_timeout }}"
-  when: reboot_default | bool and reboot_hint.stdout.find("reboot") != -1 | bool
+  when: reboot_default | bool and reboot_required.rc != 0 | bool
 
 # Enable Docker & Kubelet
 - name: enable service docker and ensure it is started
