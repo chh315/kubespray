@@ -1,55 +1,74 @@
 ---
 # Disable Docker & Kubelet
-- name: disable service docker and ensure it is not masked
-  systemd:
+- name: disable service docker and ensure it is is stopped
+  service:
     name: docker
     enabled: no
-    masked: no
-- name: disable service kubelet and ensure it is not masked
-  systemd:
+    state: stopped
+- name: disable service kubelet and ensure it is stopped
+  service:
     name: kubelet
     enabled: no
-    masked: no
+    state: stopped
+
 # Reboot Before Update
 - name: Reboot the machine before update
   reboot:
-    pre_reboot_delay: 60
-    post_reboot_delay: 360
-  register: REBOOT_RESULT
-- debug: msg="{{ inventory_hostname}} {{REBOOT_RESULT}}"
-# List Available Patches
-- name: List Available Patches (Non-Docker)
-  yum:
-    list: updates
-    update_cache: true
-    exclude: docker-ce*
-  register: yumoutput
-- debug: msg="{{ inventory_hostname}} {{ yumoutput.results }}"
-# Update Packages
-- name: upgrade all packages, excluding docker packages
-  yum:
-    name: '*'
-    state: latest
-    exclude: docker-ce*
+    pre_reboot_delay: "{{ server_update_reboot_pre_reboot_delay }}"
+    post_reboot_delay: "{{ server_update_reboot_post_reboot_delay }}"
+    reboot_timeout: "{{ server_update_reboot_reboot_timeout }}"
+  when: reboot_default | bool and reboot_hint_result | bool
+
+#Upgrade and reboot Redhat/CentOS based servers
+- block:
+  - name: upgrade all packages, excluding docker packages
+    yum:
+      name: "{{ server_update_yum_install_pkgs | default('*') }}"
+      state: latest # noqa 10
+      update_cache: yes
+      exclude: "{{ server_update_yum_exclude_pkgs | default([]) }}"
+    register: stat_yum_upgrade_results
+    until: "stat_yum_upgrade_results is success"
+    retries: 2
+    delay: 30
+    tags:
+      - skip_ansible_lint
+  rescue:
+  - name: debug yum failed
+    debug: msg='YUM Upgrade failed'
+  - meta: flush_handlers
+  - name: fail check
+    fail: msg='YUM Upgrade failed'
+  when: ansible_os_family == "RedHat" and update_default | bool
+
+- name: debug stat_yum_upgrade_results
+  debug: var=stat_yum_upgrade_results
+  when: debug_enabled_default | bool
+
 # Remove Unused Kernel
 - name: Remove old kernels from the OS keeping only the last most recent three
   command: /usr/bin/package-cleanup --oldkernels --count=3 -y
 
+# Reboot Again If Necessary
+- name: Check for reboot hint.
+  shell: LAST_KERNEL=$(rpm -q --last kernel | awk 'NR==1{sub(/kernel-/,""); print $1}'); CURRENT_KERNEL=$(uname -r); if [ $LAST_KERNEL != $CURRENT_KERNEL ]; then echo 'reboot'; else echo 'no'; fi
+  ignore_errors: true
+  register: reboot_hint
+- name: Reboot the machine after update if requried
+  reboot:
+    pre_reboot_delay: "{{ server_update_reboot_pre_reboot_delay }}"
+    post_reboot_delay: "{{ server_update_reboot_post_reboot_delay }}"
+    reboot_timeout: "{{ server_update_reboot_reboot_timeout }}"
+  when: reboot_default | bool and reboot_hint.stdout.find("reboot") != -1 | bool
+
 # Enable Docker & Kubelet
-- name: enable service docker and ensure it is not masked
-  systemd:
+- name: enable service docker and ensure it is started
+  service:
     name: docker
     enabled: yes
-    masked: no
-- name: enable service kubelet and ensure it is not masked
-  systemd:
+    state: started
+- name: enable service kubelet and ensure it is started
+  service:
     name: kubelet
     enabled: yes
-    masked: no
-# Reboot Again
-- name: Reboot the machine after update
-  reboot:
-    pre_reboot_delay: 60
-    post_reboot_delay: 360
-  register: REBOOT_RESULT
-- debug: msg="{{ inventory_hostname}} {{REBOOT_RESULT}}"
+    state: started
